@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Video Transcriber & Downloader</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', -apple-system, sans-serif;
+    background: #0f0f0f;
+    color: #fff;
+    min-height: 100vh;
+  }
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px 20px;
+  }
+  header { text-align: center; margin-bottom: 40px; }
+  header h1 {
+    font-size: 36px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, #ff0050, #ff4444);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  header p { color: #aaa; font-size: 16px; }
+
+  .search-box { display: flex; gap: 10px; margin-bottom: 30px; }
+  .search-box input {
+    flex: 1; padding: 14px 20px; border-radius: 10px;
+    border: 2px solid #333; background: #1a1a1a; color: #fff;
+    font-size: 16px; outline: none; transition: border-color 0.3s;
+  }
+  .search-box input:focus { border-color: #ff4444; }
+  .search-box input::placeholder { color: #666; }
+  .search-box button {
+    padding: 14px 28px; border-radius: 10px; border: none;
+    background: #ff0000; color: #fff; font-size: 16px;
+    font-weight: 600; cursor: pointer; transition: background 0.2s;
+    white-space: nowrap;
+  }
+  .search-box button:hover { background: #cc0000; }
+  .search-box button:disabled { background: #555; cursor: not-allowed; }
+
+  .error {
+    background: #331111; border: 1px solid #662222; border-radius: 10px;
+    padding: 14px 20px; margin-bottom: 20px; color: #ff6666; display: none;
+  }
+  .error.show { display: block; }
+  .info-msg {
+    background: #1a2a33; border: 1px solid #2a4a55; border-radius: 10px;
+    padding: 14px 20px; margin-bottom: 20px; color: #4fc3f7; display: none;
+  }
+  .info-msg.show { display: block; }
+
+  .video-info {
+    display: none; background: #1a1a1a; border-radius: 12px;
+    padding: 20px; margin-bottom: 20px; border: 1px solid #333;
+  }
+  .video-info.show { display: flex; gap: 20px; align-items: center; }
+  .video-info img { width: 200px; border-radius: 8px; flex-shrink: 0; }
+  .video-info .info h2 { font-size: 18px; margin-bottom: 6px; }
+  .video-info .info p { color: #aaa; font-size: 14px; margin-bottom: 4px; }
+  .video-info .info .lang-select {
+    margin-top: 8px; display: flex; align-items: center; gap: 8px;
+  }
+  .video-info .info .lang-select label { color: #888; font-size: 13px; }
+  .video-info .info .lang-select select {
+    background: #222; color: #fff; border: 1px solid #444;
+    padding: 4px 8px; border-radius: 6px; font-size: 13px; cursor: pointer;
+  }
+
+  /* Tabs */
+  .tabs {
+    display: none; margin-bottom: 20px;
+    border-bottom: 2px solid #333;
+  }
+  .tabs.show { display: flex; }
+  .tabs button {
+    padding: 12px 24px; border: none; background: none;
+    color: #888; font-size: 15px; font-weight: 600;
+    cursor: pointer; border-bottom: 2px solid transparent;
+    margin-bottom: -2px; transition: all 0.2s;
+  }
+  .tabs button:hover { color: #fff; }
+  .tabs button.active {
+    color: #ff4444;
+    border-bottom-color: #ff4444;
+  }
+
+  /* Transcript section */
+  .toolbar { display: none; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .toolbar.show { display: flex; }
+  .toolbar button {
+    padding: 8px 16px; border-radius: 8px; border: 1px solid #444;
+    background: #222; color: #ccc; font-size: 13px; cursor: pointer;
+    transition: all 0.2s;
+  }
+  .toolbar button:hover { background: #333; color: #fff; }
+  .toolbar button.active { background: #ff0000; border-color: #ff0000; color: #fff; }
+
+  .transcript-box {
+    display: none; background: #1a1a1a; border: 1px solid #333;
+    border-radius: 12px; max-height: 600px; overflow-y: auto;
+  }
+  .transcript-box.show { display: block; }
+  .transcript-box::-webkit-scrollbar { width: 8px; }
+  .transcript-box::-webkit-scrollbar-track { background: #1a1a1a; border-radius: 12px; }
+  .transcript-box::-webkit-scrollbar-thumb { background: #444; border-radius: 8px; }
+
+  .transcript-line {
+    display: flex; padding: 10px 20px; gap: 16px;
+    border-bottom: 1px solid #222; transition: background 0.15s;
+  }
+  .transcript-line:hover { background: #252525; }
+  .transcript-line:last-child { border-bottom: none; }
+  .timestamp {
+    color: #4fc3f7; font-size: 13px; font-family: monospace;
+    white-space: nowrap; min-width: 65px; padding-top: 2px; cursor: pointer;
+  }
+  .timestamp:hover { text-decoration: underline; }
+  .text { color: #ddd; font-size: 15px; line-height: 1.5; }
+  .plain-text {
+    padding: 20px; color: #ddd; font-size: 15px;
+    line-height: 1.8; white-space: pre-wrap;
+  }
+
+  .stats {
+    display: none; color: #888; font-size: 13px;
+    margin-bottom: 10px; padding: 0 4px;
+  }
+  .stats.show { display: flex; justify-content: space-between; }
+
+  /* Download section */
+  .download-section {
+    display: none;
+  }
+  .download-section.show { display: block; }
+
+  .download-card {
+    background: #1a1a1a; border: 1px solid #333;
+    border-radius: 12px; padding: 24px;
+  }
+  .download-card h3 {
+    font-size: 16px; margin-bottom: 16px; color: #ccc;
+  }
+
+  .quality-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .quality-option {
+    padding: 14px 16px; border-radius: 10px;
+    border: 2px solid #333; background: #222;
+    cursor: pointer; transition: all 0.2s; text-align: center;
+  }
+  .quality-option:hover { border-color: #555; background: #2a2a2a; }
+  .quality-option.selected { border-color: #ff4444; background: #2a1a1a; }
+  .quality-option .q-label {
+    font-size: 16px; font-weight: 700; color: #fff;
+    margin-bottom: 4px;
+  }
+  .quality-option .q-desc {
+    font-size: 12px; color: #888;
+  }
+
+  .save-location {
+    margin-bottom: 16px;
+  }
+  .save-location label {
+    display: block; color: #888; font-size: 13px; margin-bottom: 6px;
+  }
+  .save-path-row {
+    display: flex; gap: 8px;
+  }
+  .save-path-row input {
+    flex: 1; padding: 10px 14px; border-radius: 8px;
+    border: 1px solid #444; background: #222; color: #ccc;
+    font-size: 13px; cursor: pointer; outline: none;
+  }
+  .save-path-row button {
+    padding: 10px 18px; border-radius: 8px; border: 1px solid #444;
+    background: #333; color: #ccc; font-size: 13px; cursor: pointer;
+    transition: all 0.2s; white-space: nowrap;
+  }
+  .save-path-row button:hover { background: #444; color: #fff; }
+
+  .download-btn {
+    width: 100%; padding: 14px; border-radius: 10px;
+    border: none; background: #ff0000; color: #fff;
+    font-size: 16px; font-weight: 700; cursor: pointer;
+    transition: background 0.2s;
+  }
+  .download-btn:hover { background: #cc0000; }
+  .download-btn:disabled { background: #555; cursor: not-allowed; }
+
+  .progress-container {
+    display: none; margin-top: 16px;
+  }
+  .progress-container.show { display: block; }
+  .progress-bar-bg {
+    width: 100%; height: 8px; background: #333;
+    border-radius: 4px; overflow: hidden;
+  }
+  .progress-bar {
+    height: 100%; background: linear-gradient(90deg, #ff0000, #ff4444);
+    border-radius: 4px; width: 0%; transition: width 0.3s;
+  }
+  .progress-text {
+    display: flex; justify-content: space-between;
+    margin-top: 8px; font-size: 13px; color: #aaa;
+  }
+  .download-done {
+    display: none; margin-top: 16px; padding: 14px;
+    background: #1a331a; border: 1px solid #2a5a2a;
+    border-radius: 10px; color: #66bb6a; font-size: 14px;
+    text-align: center;
+  }
+  .download-done.show { display: block; }
+
+  /* Loading */
+  .loading { display: none; text-align: center; padding: 40px; }
+  .loading.show { display: block; }
+  .spinner {
+    width: 40px; height: 40px; border: 4px solid #333;
+    border-top: 4px solid #ff0000; border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin: 0 auto 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading p { color: #aaa; }
+
+  .copy-toast {
+    position: fixed; bottom: 30px; left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: #333; color: #fff; padding: 10px 24px;
+    border-radius: 8px; font-size: 14px; opacity: 0;
+    transition: all 0.3s; pointer-events: none; z-index: 100;
+  }
+  .copy-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* Folder picker modal */
+  .modal-overlay {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7); z-index: 200;
+    justify-content: center; align-items: center;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: #1a1a1a; border: 1px solid #333; border-radius: 12px;
+    width: 500px; max-width: 90vw; max-height: 70vh;
+    display: flex; flex-direction: column;
+  }
+  .modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 20px; border-bottom: 1px solid #333;
+  }
+  .modal-header h3 { font-size: 16px; }
+  .modal-close {
+    background: none; border: none; color: #888; font-size: 24px;
+    cursor: pointer; padding: 0 4px;
+  }
+  .modal-close:hover { color: #fff; }
+  .modal-path {
+    padding: 10px 20px; font-size: 12px; color: #4fc3f7;
+    font-family: monospace; border-bottom: 1px solid #222;
+    word-break: break-all;
+  }
+  .modal-folders {
+    flex: 1; overflow-y: auto; padding: 8px 0; min-height: 200px; max-height: 400px;
+  }
+  .modal-folders::-webkit-scrollbar { width: 6px; }
+  .modal-folders::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+  .folder-item {
+    padding: 10px 20px; cursor: pointer; display: flex;
+    align-items: center; gap: 10px; transition: background 0.15s;
+    font-size: 14px; color: #ddd;
+  }
+  .folder-item:hover { background: #252525; }
+  .folder-item.parent { color: #888; }
+  .folder-icon { font-size: 16px; }
+  .modal-footer {
+    display: flex; justify-content: flex-end; gap: 10px;
+    padding: 14px 20px; border-top: 1px solid #333;
+  }
+  .modal-btn {
+    padding: 8px 20px; border-radius: 8px; border: none;
+    font-size: 14px; cursor: pointer; transition: background 0.2s;
+  }
+  .modal-btn.secondary { background: #333; color: #ccc; }
+  .modal-btn.secondary:hover { background: #444; }
+  .modal-btn.primary { background: #ff0000; color: #fff; }
+  .modal-btn.primary:hover { background: #cc0000; }
+
+  @media (max-width: 600px) {
+    .video-info.show { flex-direction: column; }
+    .video-info img { width: 100%; }
+    .search-box { flex-direction: column; }
+    .quality-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>Video Transcriber & Downloader</h1>
+    <p>Paste a YouTube or TikTok URL to get the transcript or download the video</p>
+  </header>
+
+  <div class="search-box">
+    <input type="text" id="urlInput" placeholder="Paste a YouTube or TikTok URL..." autofocus>
+    <button id="fetchBtn" onclick="fetchVideo()">Go</button>
+  </div>
+
+  <div class="error" id="error"></div>
+  <div class="info-msg" id="infoMsg"></div>
+
+  <div class="video-info" id="videoInfo">
+    <img id="thumbnail" src="" alt="thumbnail">
+    <div class="info">
+      <h2 id="videoTitle"></h2>
+      <p id="videoChannel"></p>
+      <p id="videoDuration"></p>
+      <div class="lang-select" id="langSelect" style="display:none">
+        <label>Language:</label>
+        <select id="langDropdown" onchange="changeLang(this.value)"></select>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs" id="tabs">
+    <button class="active" onclick="switchTab('transcript', this)">Transcript</button>
+    <button onclick="switchTab('download', this)">Download</button>
+  </div>
+
+  <!-- Transcript Tab -->
+  <div id="transcriptSection">
+    <div class="toolbar" id="toolbar">
+      <button class="active" id="btnTimestamps" onclick="setView('timestamps', this)">With Timestamps</button>
+      <button id="btnPlain" onclick="setView('plain', this)">Plain Text</button>
+      <button onclick="copyTranscript()">Copy to Clipboard</button>
+      <button onclick="downloadTranscriptTxt()">Download .txt</button>
+    </div>
+
+    <div class="stats" id="stats">
+      <span id="wordCount"></span>
+      <span id="lineCount"></span>
+    </div>
+
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <p id="loadingText">Fetching transcript...</p>
+    </div>
+
+    <div class="transcript-box" id="transcriptBox"></div>
+  </div>
+
+  <!-- Download Tab -->
+  <div class="download-section" id="downloadSection">
+    <div class="download-card">
+      <h3>Select Quality</h3>
+      <div class="quality-grid" id="qualityGrid">
+        <div class="quality-option selected" data-quality="best" onclick="selectQuality(this)">
+          <div class="q-label">Best</div>
+          <div class="q-desc">Highest available</div>
+        </div>
+        <div class="quality-option" data-quality="1080" onclick="selectQuality(this)">
+          <div class="q-label">1080p</div>
+          <div class="q-desc">Full HD</div>
+        </div>
+        <div class="quality-option" data-quality="720" onclick="selectQuality(this)">
+          <div class="q-label">720p</div>
+          <div class="q-desc">HD</div>
+        </div>
+        <div class="quality-option" data-quality="480" onclick="selectQuality(this)">
+          <div class="q-label">480p</div>
+          <div class="q-desc">SD</div>
+        </div>
+        <div class="quality-option" data-quality="360" onclick="selectQuality(this)">
+          <div class="q-label">360p</div>
+          <div class="q-desc">Low</div>
+        </div>
+        <div class="quality-option" data-quality="audio" onclick="selectQuality(this)">
+          <div class="q-label">Audio</div>
+          <div class="q-desc">M4A audio only</div>
+        </div>
+      </div>
+      <div class="save-location">
+        <label>Save to:</label>
+        <div class="save-path-row">
+          <input type="text" id="savePath" value="Downloads" readonly>
+          <button onclick="chooseSaveFolder()">Browse</button>
+        </div>
+      </div>
+      <button class="download-btn" id="downloadBtn" onclick="downloadVideo()">Download Video</button>
+      <div class="progress-container" id="progressContainer">
+        <div class="progress-bar-bg">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <div class="progress-text">
+          <span id="progressStatus">Starting...</span>
+          <span id="progressPercent">0%</span>
+        </div>
+      </div>
+      <div class="download-done" id="downloadDone"></div>
+    </div>
+  </div>
+</div>
+
+<div class="copy-toast" id="toast">Copied to clipboard!</div>
+
+<!-- Folder Picker Modal -->
+<div class="modal-overlay" id="folderModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Choose Save Location</h3>
+      <button class="modal-close" onclick="closeFolderModal()">&times;</button>
+    </div>
+    <div class="modal-path" id="modalPath"></div>
+    <div class="modal-folders" id="modalFolders"></div>
+    <div class="modal-footer">
+      <button class="modal-btn secondary" onclick="closeFolderModal()">Cancel</button>
+      <button class="modal-btn primary" onclick="confirmFolder()">Select This Folder</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let transcriptData = [];
+let currentSource = null; // { platform, videoId, url }
+let currentView = 'timestamps';
+let selectedQuality = 'best';
+let currentTab = 'transcript';
+let saveFolderPath = '';
+
+const urlInput = document.getElementById('urlInput');
+urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') fetchVideo(); });
+
+function parseVideoSource(url) {
+  // YouTube
+  const ytPatterns = [
+    /(?:youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
+    /(?:youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+    /(?:youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+    /(?:youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/,
+  ];
+  for (const p of ytPatterns) {
+    const m = url.match(p);
+    if (m) return { platform: 'youtube', videoId: m[1], url };
+  }
+  // TikTok
+  if (/tiktok\.com\/@[^/]+\/video\/\d+/.test(url) ||
+      /vm\.tiktok\.com\//.test(url) ||
+      /tiktok\.com\/t\//.test(url)) {
+    return { platform: 'tiktok', videoId: null, url };
+  }
+  return null;
+}
+
+function formatTime(seconds) {
+  const s = Math.floor(seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  return `${m}:${String(sec).padStart(2,'0')}`;
+}
+
+function formatDuration(secs) {
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  return `${m}m ${s}s`;
+}
+
+function switchTab(tab, btn) {
+  currentTab = tab;
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  if (tab === 'transcript') {
+    document.getElementById('transcriptSection').style.display = '';
+    document.getElementById('downloadSection').classList.remove('show');
+  } else {
+    document.getElementById('transcriptSection').style.display = 'none';
+    document.getElementById('downloadSection').classList.add('show');
+  }
+}
+
+async function fetchVideo() {
+  const url = urlInput.value.trim();
+  if (!url) return;
+
+  currentSource = parseVideoSource(url);
+  if (!currentSource) {
+    showError('Invalid URL. Please paste a valid YouTube or TikTok link.');
+    return;
+  }
+
+  hideError();
+  hideInfoMsg();
+  hideResults();
+  document.getElementById('loadingText').textContent = 'Fetching video info...';
+  showLoading(true);
+  document.getElementById('fetchBtn').disabled = true;
+
+  try {
+    const infoRes = await fetch(`/api/info?url=${encodeURIComponent(currentSource.url)}`);
+    const info = await infoRes.json();
+
+    if (info.error) {
+      showError(info.error);
+      showLoading(false);
+      document.getElementById('fetchBtn').disabled = false;
+      return;
+    }
+
+    // Store platform from server response
+    currentSource.platform = info.platform || currentSource.platform;
+
+    document.getElementById('thumbnail').src = info.thumbnail;
+    document.getElementById('videoTitle').textContent = info.title;
+    document.getElementById('videoChannel').textContent = info.channel;
+    document.getElementById('videoDuration').textContent = formatDuration(info.duration);
+    document.getElementById('videoInfo').classList.add('show');
+    document.getElementById('tabs').classList.add('show');
+
+    if (info.languages && info.languages.length > 0) {
+      const dropdown = document.getElementById('langDropdown');
+      dropdown.innerHTML = '';
+      const sorted = info.languages.sort((a, b) => {
+        if (a.isAuto !== b.isAuto) return a.isAuto ? 1 : -1;
+        if (a.code === 'en') return -1;
+        if (b.code === 'en') return 1;
+        return a.code.localeCompare(b.code);
+      });
+      sorted.forEach(l => {
+        const opt = document.createElement('option');
+        opt.value = l.code;
+        opt.textContent = l.name;
+        dropdown.appendChild(opt);
+      });
+      document.getElementById('langSelect').style.display = 'flex';
+    } else {
+      document.getElementById('langSelect').style.display = 'none';
+    }
+
+    // Show transcript tab by default
+    if (currentTab === 'transcript') {
+      document.getElementById('loadingText').textContent = 'Extracting transcript...';
+      const lang = document.getElementById('langDropdown').value || 'en';
+      const transRes = await fetch(`/api/transcript?url=${encodeURIComponent(currentSource.url)}&lang=${lang}`);
+      const transData = await transRes.json();
+
+      if (transData.error) {
+        if (transData.noSubs) {
+          showInfoMsg(transData.error);
+        } else {
+          showError(transData.error);
+        }
+        showLoading(false);
+        document.getElementById('fetchBtn').disabled = false;
+        return;
+      }
+
+      transcriptData = transData.transcript;
+      renderTranscript();
+    }
+
+    showLoading(false);
+    document.getElementById('fetchBtn').disabled = false;
+
+  } catch (err) {
+    showError('Failed to connect to server: ' + err.message);
+    showLoading(false);
+    document.getElementById('fetchBtn').disabled = false;
+  }
+}
+
+async function changeLang(lang) {
+  if (!currentSource) return;
+  document.getElementById('loadingText').textContent = 'Switching language...';
+  showLoading(true);
+  hideError();
+  hideInfoMsg();
+  document.getElementById('transcriptBox').classList.remove('show');
+  try {
+    const res = await fetch(`/api/transcript?url=${encodeURIComponent(currentSource.url)}&lang=${lang}`);
+    const data = await res.json();
+    if (data.error) {
+      if (data.noSubs) { showInfoMsg(data.error); } else { showError(data.error); }
+      showLoading(false);
+      return;
+    }
+    transcriptData = data.transcript;
+    renderTranscript();
+    showLoading(false);
+  } catch (err) {
+    showError(err.message);
+    showLoading(false);
+  }
+}
+
+function renderTranscript() {
+  const box = document.getElementById('transcriptBox');
+  box.innerHTML = '';
+
+  if (currentView === 'timestamps') {
+    transcriptData.forEach(line => {
+      const div = document.createElement('div');
+      div.className = 'transcript-line';
+      const ts = document.createElement('span');
+      ts.className = 'timestamp';
+      ts.textContent = formatTime(line.start);
+      ts.onclick = () => {
+        if (currentSource.platform === 'youtube' && currentSource.videoId) {
+          window.open(`https://youtube.com/watch?v=${currentSource.videoId}&t=${Math.floor(line.start)}s`, '_blank');
+        } else {
+          window.open(currentSource.url, '_blank');
+        }
+      };
+      const txt = document.createElement('span');
+      txt.className = 'text';
+      txt.textContent = line.text;
+      div.appendChild(ts);
+      div.appendChild(txt);
+      box.appendChild(div);
+    });
+  } else {
+    const div = document.createElement('div');
+    div.className = 'plain-text';
+    div.textContent = transcriptData.map(l => l.text).join(' ');
+    box.appendChild(div);
+  }
+
+  box.classList.add('show');
+  document.getElementById('toolbar').classList.add('show');
+
+  const totalWords = transcriptData.reduce((sum, l) => sum + l.text.split(/\s+/).filter(Boolean).length, 0);
+  document.getElementById('wordCount').textContent = `${totalWords.toLocaleString()} words`;
+  document.getElementById('lineCount').textContent = `${transcriptData.length} segments`;
+  document.getElementById('stats').classList.add('show');
+}
+
+function setView(view, btn) {
+  currentView = view;
+  document.querySelectorAll('.toolbar button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTranscript();
+}
+
+function selectQuality(el) {
+  document.querySelectorAll('.quality-option').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedQuality = el.dataset.quality;
+
+  const btn = document.getElementById('downloadBtn');
+  btn.textContent = selectedQuality === 'audio' ? 'Download Audio' : 'Download Video';
+}
+
+let currentBrowsePath = '';
+
+async function chooseSaveFolder() {
+  document.getElementById('folderModal').classList.add('show');
+  await browseTo('');
+}
+
+function closeFolderModal() {
+  document.getElementById('folderModal').classList.remove('show');
+}
+
+async function browseTo(folderPath) {
+  try {
+    const param = folderPath ? `?path=${encodeURIComponent(folderPath)}` : '';
+    const res = await fetch(`/api/browse${param}`);
+    const data = await res.json();
+    if (data.error) return;
+
+    currentBrowsePath = data.current;
+    document.getElementById('modalPath').textContent = data.current;
+
+    const container = document.getElementById('modalFolders');
+    container.innerHTML = '';
+
+    // Parent folder
+    const parent = data.current.replace(/[\\/][^\\/]+$/, '');
+    if (parent && parent !== data.current) {
+      const div = document.createElement('div');
+      div.className = 'folder-item parent';
+      div.innerHTML = '<span class="folder-icon">..</span><span>Go up</span>';
+      div.onclick = () => browseTo(parent);
+      container.appendChild(div);
+    }
+
+    data.folders.forEach(f => {
+      const div = document.createElement('div');
+      div.className = 'folder-item';
+      div.innerHTML = `<span class="folder-icon">&#128193;</span><span>${f.name}</span>`;
+      div.onclick = () => browseTo(f.path);
+      container.appendChild(div);
+    });
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function confirmFolder() {
+  if (currentBrowsePath) {
+    const input = document.getElementById('savePath');
+    input.value = currentBrowsePath;
+    input.readOnly = false;
+    saveFolderPath = currentBrowsePath;
+  }
+  closeFolderModal();
+}
+
+async function downloadVideo() {
+  if (!currentSource) return;
+
+  const btn = document.getElementById('downloadBtn');
+  const progressContainer = document.getElementById('progressContainer');
+  const progressBar = document.getElementById('progressBar');
+  const progressStatus = document.getElementById('progressStatus');
+  const progressPercent = document.getElementById('progressPercent');
+  const downloadDone = document.getElementById('downloadDone');
+
+  btn.disabled = true;
+  btn.textContent = 'Downloading...';
+  progressContainer.classList.add('show');
+  downloadDone.classList.remove('show');
+  progressBar.style.width = '0%';
+  progressStatus.textContent = 'Starting...';
+  progressPercent.textContent = '0%';
+
+  const savePathValue = document.getElementById('savePath').value.trim();
+  const pathParam = savePathValue && savePathValue !== 'Downloads' ? `&path=${encodeURIComponent(savePathValue)}` : '';
+  saveFolderPath = savePathValue;
+
+  try {
+    const response = await fetch(`/api/download?url=${encodeURIComponent(currentSource.url)}&quality=${selectedQuality}${pathParam}`);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const data = JSON.parse(line.slice(6));
+
+          if (data.status === 'downloading') {
+            const pct = Math.round(data.progress);
+            progressBar.style.width = pct + '%';
+            progressPercent.textContent = pct + '%';
+            progressStatus.textContent = data.detail || 'Downloading...';
+          } else if (data.status === 'merging') {
+            progressBar.style.width = '100%';
+            progressPercent.textContent = '100%';
+            progressStatus.textContent = 'Merging audio & video...';
+          } else if (data.status === 'done') {
+            progressBar.style.width = '100%';
+            progressPercent.textContent = '100%';
+            progressStatus.textContent = 'Complete!';
+            downloadDone.innerHTML = 'Saved to your <strong>Downloads</strong> folder';
+            if (data.filepath) {
+              downloadDone.innerHTML += '<br><small style="color:#4a8a4a;word-break:break-all">' + data.filepath + '</small>';
+            }
+            downloadDone.classList.add('show');
+          } else if (data.status === 'error') {
+            progressStatus.textContent = 'Error: ' + data.message;
+            progressPercent.textContent = '';
+          }
+        } catch(e) {}
+      }
+    }
+  } catch (err) {
+    showError('Download failed: ' + err.message);
+  }
+
+  btn.disabled = false;
+  btn.textContent = selectedQuality === 'audio' ? 'Download Audio' : 'Download Video';
+}
+
+function copyTranscript() {
+  let text;
+  if (currentView === 'timestamps') {
+    text = transcriptData.map(l => `[${formatTime(l.start)}] ${l.text}`).join('\n');
+  } else {
+    text = transcriptData.map(l => l.text).join(' ');
+  }
+  navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard!'));
+}
+
+function downloadTranscriptTxt() {
+  let text;
+  const title = document.getElementById('videoTitle').textContent || 'transcript';
+  if (currentView === 'timestamps') {
+    text = transcriptData.map(l => `[${formatTime(l.start)}] ${l.text}`).join('\n');
+  } else {
+    text = transcriptData.map(l => l.text).join(' ');
+  }
+  const blob = new Blob([text], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${title.replace(/[^a-z0-9]/gi, '_')}_transcript.txt`;
+  a.click();
+}
+
+function showError(msg) {
+  const el = document.getElementById('error');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+function hideError() { document.getElementById('error').classList.remove('show'); }
+function showInfoMsg(msg) {
+  const el = document.getElementById('infoMsg');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+function hideInfoMsg() { document.getElementById('infoMsg').classList.remove('show'); }
+function hideResults() {
+  document.getElementById('videoInfo').classList.remove('show');
+  document.getElementById('tabs').classList.remove('show');
+  document.getElementById('toolbar').classList.remove('show');
+  document.getElementById('transcriptBox').classList.remove('show');
+  document.getElementById('stats').classList.remove('show');
+  document.getElementById('downloadSection').classList.remove('show');
+  document.getElementById('langSelect').style.display = 'none';
+  document.getElementById('transcriptSection').style.display = '';
+  hideInfoMsg();
+  // Reset download state
+  document.getElementById('progressContainer').classList.remove('show');
+  document.getElementById('downloadDone').classList.remove('show');
+  // Reset tabs
+  currentTab = 'transcript';
+  document.querySelectorAll('.tabs button').forEach((b, i) => b.classList.toggle('active', i === 0));
+}
+function showLoading(show) { document.getElementById('loading').classList.toggle('show', show); }
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+</script>
+</body>
+</html>
