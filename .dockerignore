@@ -1,0 +1,5 @@
+node_modules
+.git
+debug.js
+test.*
+index.html

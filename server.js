@@ -5,7 +5,7 @@ const fs = require('fs');
 const os = require('os');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -302,7 +302,7 @@ app.get('/api/formats', async (req, res) => {
   }
 });
 
-// Download video
+// Download video — progress stream
 app.get('/api/download', async (req, res) => {
   const source = parseSourceUrl(req.query.url);
   if (!source) return res.json({ error: 'Invalid or unsupported URL.' });
@@ -312,16 +312,14 @@ app.get('/api/download', async (req, res) => {
 
   let downloadsDir;
   if (customPath) {
-    // Resolve the path - support both absolute and relative paths
     downloadsDir = path.isAbsolute(customPath) ? customPath : path.join(os.homedir(), customPath);
   } else {
-    downloadsDir = path.join(os.homedir(), 'Downloads');
+    downloadsDir = path.join(os.tmpdir(), 'vt-downloads');
   }
   if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir, { recursive: true });
 
   let formatArg;
   if (source.platform === 'tiktok') {
-    // TikTok doesn't have the same quality tiers as YouTube
     formatArg = quality === 'audio' ? 'bestaudio' : 'best';
   } else {
     switch (quality) {
@@ -360,7 +358,6 @@ app.get('/api/download', async (req, res) => {
       source.url
     ];
 
-    // Use spawn for progress tracking
     const { spawn } = require('child_process');
     const proc = spawn('yt-dlp', args);
 
@@ -372,11 +369,9 @@ app.get('/api/download', async (req, res) => {
 
     proc.stdout.on('data', (data) => {
       const line = data.toString().trim();
-      // yt-dlp prints the filepath as the last line due to --print
       if (line && !line.startsWith('[') && !line.startsWith('Deleting') && fs.existsSync(line)) {
         filepath = line;
       }
-      // Parse progress
       const progressMatch = line.match(/(\d+\.?\d*)%/);
       if (progressMatch) {
         res.write(`data: ${JSON.stringify({ progress: parseFloat(progressMatch[1]), status: 'downloading' })}\n\n`);
@@ -396,8 +391,10 @@ app.get('/api/download', async (req, res) => {
     });
 
     proc.on('close', (code) => {
-      if (code === 0) {
-        res.write(`data: ${JSON.stringify({ progress: 100, status: 'done', filepath: filepath || downloadsDir })}\n\n`);
+      if (code === 0 && filepath) {
+        res.write(`data: ${JSON.stringify({ progress: 100, status: 'done', filepath: path.basename(filepath) })}\n\n`);
+      } else if (code === 0) {
+        res.write(`data: ${JSON.stringify({ progress: 100, status: 'done' })}\n\n`);
       } else {
         res.write(`data: ${JSON.stringify({ status: 'error', message: 'Download failed' })}\n\n`);
       }
@@ -416,6 +413,23 @@ app.get('/api/download', async (req, res) => {
   } catch (err) {
     res.json({ error: err.message });
   }
+});
+
+// Serve downloaded file to user's browser
+app.get('/api/file', (req, res) => {
+  const filename = req.query.name;
+  if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    return res.status(400).json({ error: 'Invalid filename' });
+  }
+  const downloadsDir = path.join(os.tmpdir(), 'vt-downloads');
+  const filepath = path.join(downloadsDir, filename);
+  if (!fs.existsSync(filepath)) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+  res.download(filepath, filename, (err) => {
+    // Clean up temp file after sending
+    try { fs.unlinkSync(filepath); } catch(e) {}
+  });
 });
 
 app.listen(PORT, () => {
