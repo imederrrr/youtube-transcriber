@@ -237,11 +237,11 @@
 <div class="container">
   <header>
     <h1>Video Transcriber & Downloader</h1>
-    <p>Paste a YouTube or TikTok URL to get the transcript or download the video</p>
+    <p>Paste any video URL to get the transcript or download</p>
   </header>
 
   <div class="search-box">
-    <input type="text" id="urlInput" placeholder="Paste a YouTube or TikTok URL..." autofocus>
+    <input type="text" id="urlInput" placeholder="Paste any video URL (YouTube, Instagram, TikTok, X, Reddit...)" autofocus>
     <button id="fetchBtn" onclick="fetchVideo()">Go</button>
   </div>
 
@@ -347,7 +347,16 @@ const urlInput = document.getElementById('urlInput');
 urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') fetchVideo(); });
 
 function parseVideoSource(url) {
-  // YouTube
+  let parsed;
+  try {
+    parsed = new URL(url);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return null;
+  } catch {
+    return null;
+  }
+  const host = parsed.hostname.replace(/^www\./, '');
+
+  // YouTube — extract videoId for timestamp links
   const ytPatterns = [
     /(?:youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
     /(?:youtu\.be\/)([a-zA-Z0-9_-]{11})/,
@@ -358,13 +367,30 @@ function parseVideoSource(url) {
     const m = url.match(p);
     if (m) return { platform: 'youtube', videoId: m[1], url };
   }
+
   // TikTok
-  if (/tiktok\.com\/@[^/]+\/video\/\d+/.test(url) ||
-      /vm\.tiktok\.com\//.test(url) ||
-      /tiktok\.com\/t\//.test(url)) {
+  if (host === 'tiktok.com' || host === 'vm.tiktok.com' || host === 'm.tiktok.com') {
     return { platform: 'tiktok', videoId: null, url };
   }
-  return null;
+  // Instagram
+  if (host === 'instagram.com' || host === 'i.instagram.com') {
+    return { platform: 'instagram', videoId: null, url };
+  }
+  // Facebook
+  if (['facebook.com', 'fb.watch', 'm.facebook.com', 'fb.com'].includes(host)) {
+    return { platform: 'facebook', videoId: null, url };
+  }
+  // X / Twitter
+  if (['twitter.com', 'x.com', 'mobile.twitter.com', 'mobile.x.com'].includes(host)) {
+    return { platform: 'twitter', videoId: null, url };
+  }
+  // Reddit
+  if (host === 'reddit.com' || host === 'old.reddit.com' || host === 'v.redd.it' || host.endsWith('.reddit.com')) {
+    return { platform: 'reddit', videoId: null, url };
+  }
+
+  // Generic — any valid HTTP(S) URL
+  return { platform: 'other', videoId: null, url };
 }
 
 function formatTime(seconds) {
@@ -404,7 +430,7 @@ async function fetchVideo() {
 
   currentSource = parseVideoSource(url);
   if (!currentSource) {
-    showError('Invalid URL. Please paste a valid YouTube or TikTok link.');
+    showError('Invalid URL. Please paste a valid video link (e.g. https://...).');
     return;
   }
 
@@ -619,12 +645,14 @@ async function downloadVideo() {
             progressBar.style.width = '100%';
             progressPercent.textContent = '100%';
             progressStatus.textContent = 'Complete!';
-            if (data.filepath) {
+            if (data.downloadId && data.filename) {
               // Trigger browser download
               const a = document.createElement('a');
-              a.href = `/api/file?name=${encodeURIComponent(data.filepath)}`;
-              a.download = data.filepath;
+              a.href = `/api/file?id=${encodeURIComponent(data.downloadId)}&name=${encodeURIComponent(data.filename)}`;
+              a.download = data.filename;
+              document.body.appendChild(a);
               a.click();
+              document.body.removeChild(a);
               downloadDone.innerHTML = 'Your download should start automatically.';
             } else {
               downloadDone.innerHTML = 'Download complete!';

@@ -12,6 +12,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 function parseSourceUrl(url) {
   try {
     const parsed = new URL(url);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return null;
     const host = parsed.hostname.replace(/^www\./, '');
 
     // YouTube
@@ -30,7 +31,43 @@ function parseSourceUrl(url) {
       return { platform: 'tiktok', videoId: null, url };
     }
 
-    return null;
+    // Instagram
+    if (['instagram.com', 'i.instagram.com'].includes(host)) {
+      return { platform: 'instagram', videoId: null, url };
+    }
+
+    // Facebook
+    if (['facebook.com', 'fb.watch', 'm.facebook.com', 'fb.com'].includes(host)) {
+      return { platform: 'facebook', videoId: null, url };
+    }
+
+    // X / Twitter
+    if (['twitter.com', 'x.com', 'mobile.twitter.com', 'mobile.x.com'].includes(host)) {
+      return { platform: 'twitter', videoId: null, url };
+    }
+
+    // Reddit
+    if (['reddit.com', 'old.reddit.com', 'v.redd.it'].includes(host) || host.endsWith('.reddit.com')) {
+      return { platform: 'reddit', videoId: null, url };
+    }
+
+    // Vimeo
+    if (['vimeo.com', 'player.vimeo.com'].includes(host)) {
+      return { platform: 'vimeo', videoId: null, url };
+    }
+
+    // Dailymotion
+    if (['dailymotion.com', 'dai.ly'].includes(host)) {
+      return { platform: 'dailymotion', videoId: null, url };
+    }
+
+    // Twitch
+    if (['twitch.tv', 'clips.twitch.tv', 'm.twitch.tv'].includes(host)) {
+      return { platform: 'twitch', videoId: null, url };
+    }
+
+    // Generic — let yt-dlp try any other HTTP(S) URL
+    return { platform: 'other', videoId: null, url };
   } catch {
     return null;
   }
@@ -154,7 +191,7 @@ function getLanguageName(code) {
 // Get video info and available languages
 app.get('/api/info', async (req, res) => {
   const source = parseSourceUrl(req.query.url);
-  if (!source) return res.json({ error: 'Invalid or unsupported URL. Please use a YouTube or TikTok link.' });
+  if (!source) return res.json({ error: 'Invalid URL. Please paste a valid video link (e.g. https://...).' });
 
   try {
     const json = await runYtDlp([
@@ -194,7 +231,7 @@ app.get('/api/info', async (req, res) => {
 // Get transcript
 app.get('/api/transcript', async (req, res) => {
   const source = parseSourceUrl(req.query.url);
-  if (!source) return res.json({ error: 'Invalid or unsupported URL.' });
+  if (!source) return res.json({ error: 'Invalid URL. Please paste a valid video link (e.g. https://...).' });
 
   const lang = req.query.lang || 'en';
   const tmpId = Date.now() + '_' + Math.random().toString(36).slice(2, 8);
@@ -220,10 +257,10 @@ app.get('/api/transcript', async (req, res) => {
       const base = path.basename(tmpFile);
       const files = fs.readdirSync(dir).filter(f => f.startsWith(base) && f.endsWith('.vtt'));
       if (files.length === 0) {
-        const msg = source.platform === 'tiktok'
-          ? 'No transcript available. TikTok videos typically don\'t have subtitles.'
-          : 'No subtitles found for this video in the selected language.';
-        return res.json({ error: msg, noSubs: true });
+        const msg = source.platform === 'youtube'
+          ? 'No subtitles found for this video in the selected language.'
+          : 'No transcript available. Most platforms don\'t provide subtitles.';
+        return res.json({ error: msg, noSubs: source.platform !== 'youtube' });
       }
       const vttContent = fs.readFileSync(path.join(dir, files[0]), 'utf-8');
       const transcript = parseVTT(vttContent);
@@ -249,10 +286,10 @@ app.get('/api/transcript', async (req, res) => {
       });
     } catch(e) {}
 
-    const msg = source.platform === 'tiktok'
-      ? 'No transcript available. TikTok videos typically don\'t have subtitles.'
-      : 'Failed to fetch transcript: ' + err.message;
-    res.json({ error: msg, noSubs: source.platform === 'tiktok' });
+    const msg = source.platform === 'youtube'
+      ? 'Failed to fetch transcript: ' + err.message
+      : 'No transcript available. Most platforms don\'t provide subtitles.';
+    res.json({ error: msg, noSubs: source.platform !== 'youtube' });
   }
 });
 
@@ -274,7 +311,7 @@ app.get('/api/browse', (req, res) => {
 // Get available download formats
 app.get('/api/formats', async (req, res) => {
   const source = parseSourceUrl(req.query.url);
-  if (!source) return res.json({ error: 'Invalid or unsupported URL.' });
+  if (!source) return res.json({ error: 'Invalid URL. Please paste a valid video link (e.g. https://...).' });
 
   try {
     const json = await runYtDlp([
@@ -305,23 +342,18 @@ app.get('/api/formats', async (req, res) => {
 // Download video — progress stream
 app.get('/api/download', async (req, res) => {
   const source = parseSourceUrl(req.query.url);
-  if (!source) return res.json({ error: 'Invalid or unsupported URL.' });
+  if (!source) return res.json({ error: 'Invalid URL. Please paste a valid video link (e.g. https://...).' });
 
   const quality = req.query.quality || 'best';
-  const customPath = req.query.path || '';
 
-  let downloadsDir;
-  if (customPath) {
-    downloadsDir = path.isAbsolute(customPath) ? customPath : path.join(os.homedir(), customPath);
-  } else {
-    downloadsDir = path.join(os.tmpdir(), 'vt-downloads');
-  }
-  if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir, { recursive: true });
+  // Create a unique temp directory for this download
+  const downloadId = Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  const downloadsDir = path.join(os.tmpdir(), 'vt-downloads', downloadId);
+  fs.mkdirSync(downloadsDir, { recursive: true });
 
   let formatArg;
-  if (source.platform === 'tiktok') {
-    formatArg = quality === 'audio' ? 'bestaudio' : 'best';
-  } else {
+  if (source.platform === 'youtube') {
+    // YouTube: prefer mp4/m4a containers for broad compatibility
     switch (quality) {
       case 'best':
         formatArg = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';
@@ -344,6 +376,30 @@ app.get('/api/download', async (req, res) => {
       default:
         formatArg = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';
     }
+  } else {
+    // All other platforms: generic format, let yt-dlp pick best available
+    switch (quality) {
+      case 'best':
+        formatArg = 'bestvideo+bestaudio/best';
+        break;
+      case '1080':
+        formatArg = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best';
+        break;
+      case '720':
+        formatArg = 'bestvideo[height<=720]+bestaudio/best[height<=720]/best';
+        break;
+      case '480':
+        formatArg = 'bestvideo[height<=480]+bestaudio/best[height<=480]/best';
+        break;
+      case '360':
+        formatArg = 'bestvideo[height<=360]+bestaudio/best[height<=360]/best';
+        break;
+      case 'audio':
+        formatArg = 'bestaudio';
+        break;
+      default:
+        formatArg = 'bestvideo+bestaudio/best';
+    }
   }
 
   const outputTemplate = path.join(downloadsDir, '%(title)s.%(ext)s');
@@ -354,7 +410,6 @@ app.get('/api/download', async (req, res) => {
       '--merge-output-format', quality === 'audio' ? 'm4a' : 'mp4',
       '-o', outputTemplate,
       '--no-playlist',
-      '--print', 'after_move:filepath',
       source.url
     ];
 
@@ -365,13 +420,8 @@ app.get('/api/download', async (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    let filepath = '';
-
     proc.stdout.on('data', (data) => {
       const line = data.toString().trim();
-      if (line && !line.startsWith('[') && !line.startsWith('Deleting') && fs.existsSync(line)) {
-        filepath = line;
-      }
       const progressMatch = line.match(/(\d+\.?\d*)%/);
       if (progressMatch) {
         res.write(`data: ${JSON.stringify({ progress: parseFloat(progressMatch[1]), status: 'downloading' })}\n\n`);
@@ -391,12 +441,22 @@ app.get('/api/download', async (req, res) => {
     });
 
     proc.on('close', (code) => {
-      if (code === 0 && filepath) {
-        res.write(`data: ${JSON.stringify({ progress: 100, status: 'done', filepath: path.basename(filepath) })}\n\n`);
-      } else if (code === 0) {
-        res.write(`data: ${JSON.stringify({ progress: 100, status: 'done' })}\n\n`);
+      if (code === 0) {
+        // Find the downloaded file in the unique temp directory
+        try {
+          const files = fs.readdirSync(downloadsDir).filter(f => !f.endsWith('.part'));
+          if (files.length > 0) {
+            res.write(`data: ${JSON.stringify({ progress: 100, status: 'done', downloadId, filename: files[0] })}\n\n`);
+          } else {
+            res.write(`data: ${JSON.stringify({ progress: 100, status: 'done' })}\n\n`);
+          }
+        } catch(e) {
+          res.write(`data: ${JSON.stringify({ progress: 100, status: 'done' })}\n\n`);
+        }
       } else {
         res.write(`data: ${JSON.stringify({ status: 'error', message: 'Download failed' })}\n\n`);
+        // Clean up on failure
+        try { fs.rmSync(downloadsDir, { recursive: true }); } catch(e) {}
       }
       res.end();
     });
@@ -417,18 +477,26 @@ app.get('/api/download', async (req, res) => {
 
 // Serve downloaded file to user's browser
 app.get('/api/file', (req, res) => {
-  const filename = req.query.name;
-  if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
-    return res.status(400).json({ error: 'Invalid filename' });
+  const { id, name } = req.query;
+  if (!id || !name) {
+    return res.status(400).json({ error: 'Invalid request' });
   }
-  const downloadsDir = path.join(os.tmpdir(), 'vt-downloads');
-  const filepath = path.join(downloadsDir, filename);
+  // Prevent path traversal: only allow simple directory/file names
+  if (/[/\\]/.test(id) || /[/\\]/.test(name)) {
+    return res.status(400).json({ error: 'Invalid request' });
+  }
+  const dirPath = path.join(os.tmpdir(), 'vt-downloads', id);
+  const filepath = path.join(dirPath, name);
+  // Verify resolved path stays inside the expected directory
+  if (!filepath.startsWith(dirPath)) {
+    return res.status(400).json({ error: 'Invalid request' });
+  }
   if (!fs.existsSync(filepath)) {
     return res.status(404).json({ error: 'File not found' });
   }
-  res.download(filepath, filename, (err) => {
-    // Clean up temp file after sending
-    try { fs.unlinkSync(filepath); } catch(e) {}
+  res.download(filepath, name, (err) => {
+    // Clean up the entire temp directory after sending
+    try { fs.rmSync(dirPath, { recursive: true }); } catch(e) {}
   });
 });
 
