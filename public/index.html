@@ -241,7 +241,7 @@
   </header>
 
   <div class="search-box">
-    <input type="text" id="urlInput" placeholder="Paste any video URL (YouTube, Instagram, TikTok, X, Reddit...)" autofocus>
+    <input type="text" id="urlInput" placeholder="Paste any video URL (YouTube, Instagram, TikTok, Douyin, Xiaohongshu, X...)" autofocus>
     <button id="fetchBtn" onclick="fetchVideo()">Go</button>
   </div>
 
@@ -387,6 +387,14 @@ function parseVideoSource(url) {
   // Reddit
   if (host === 'reddit.com' || host === 'old.reddit.com' || host === 'v.redd.it' || host.endsWith('.reddit.com')) {
     return { platform: 'reddit', videoId: null, url };
+  }
+  // Douyin
+  if (host === 'douyin.com' || host === 'iesdouyin.com' || host.endsWith('.douyin.com')) {
+    return { platform: 'douyin', videoId: null, url };
+  }
+  // Xiaohongshu
+  if (host === 'xiaohongshu.com' || host === 'xhslink.com' || host.endsWith('.xiaohongshu.com')) {
+    return { platform: 'xiaohongshu', videoId: null, url };
   }
 
   // Generic — any valid HTTP(S) URL

@@ -66,6 +66,16 @@ function parseSourceUrl(url) {
       return { platform: 'twitch', videoId: null, url };
     }
 
+    // Douyin
+    if (['douyin.com', 'iesdouyin.com'].includes(host) || host.endsWith('.douyin.com')) {
+      return { platform: 'douyin', videoId: null, url };
+    }
+
+    // Xiaohongshu
+    if (['xiaohongshu.com', 'xhslink.com'].includes(host) || host.endsWith('.xiaohongshu.com')) {
+      return { platform: 'xiaohongshu', videoId: null, url };
+    }
+
     // Generic — let yt-dlp try any other HTTP(S) URL
     return { platform: 'other', videoId: null, url };
   } catch {
